@@ -17,6 +17,7 @@
     "openai": "^6.25.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
+    "serverless-http": "^4.0.0",
     "wavespeed": "^0.2.3"
   },
   "devDependencies": {

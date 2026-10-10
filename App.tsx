@@ -26,8 +26,6 @@ import Timeline from './components/Timeline';
 import Player from './components/Player';
 
 const App: React.FC = () => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [passwordInput, setPasswordInput] = useState('');
   const [project, setProject] = useState<ProjectState>({
     videoTitle: '', audioFile: null, audioDuration: 0, scriptText: '', ttsVoice: 'onyx', scenes: [], aspectRatio: '16:9',
     backgroundAudioFile: null, backgroundVolume: 0.05, enableBackgroundMusic: false, enableEmbers: true, 
@@ -781,54 +779,6 @@ const App: React.FC = () => {
     document.body.removeChild(a);
   };
 
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center font-sans">
-        <div className="bg-gray-900 p-8 rounded-2xl border border-gray-800 shadow-2xl max-w-md w-full">
-          <div className="flex items-center justify-center gap-3 mb-8">
-            <div className="w-10 h-10 rounded bg-brand-500 flex items-center justify-center font-bold text-white text-xl">R</div>
-            <h1 className="text-2xl font-bold tracking-tight text-white">RMagine <span className="text-brand-400">Master</span></h1>
-          </div>
-          <p className="text-gray-400 text-center mb-6 text-sm">Please enter the access password to continue.</p>
-          <form onSubmit={async (e) => {
-            e.preventDefault();
-            try {
-              const response = await fetch('/api/login', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ password: passwordInput })
-              });
-              if (response.ok) {
-                setIsAuthenticated(true);
-              } else {
-                alert('Incorrect password');
-                setPasswordInput('');
-              }
-            } catch (error) {
-              console.error('Login error:', error);
-              alert('An error occurred during login');
-            }
-          }} className="space-y-4">
-            <input 
-              type="password" 
-              value={passwordInput}
-              onChange={(e) => setPasswordInput(e.target.value)}
-              placeholder="Enter password..."
-              className="w-full bg-gray-950 border border-gray-800 rounded-lg p-4 text-white focus:border-brand-500 outline-none transition-colors"
-              autoFocus
-            />
-            <button 
-              type="submit"
-              className="w-full bg-brand-600 hover:bg-brand-500 text-white font-bold py-4 rounded-lg transition-colors shadow-lg"
-            >
-              Unlock Application
-            </button>
-          </form>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-gray-950 text-gray-100 flex flex-col font-sans overflow-hidden">
       <header className="border-b border-gray-800 bg-gray-900/50 backdrop-blur sticky top-0 z-50">
@@ -837,8 +787,13 @@ const App: React.FC = () => {
             <div className="w-8 h-8 rounded bg-brand-500 flex items-center justify-center font-bold">R</div>
             <h1 className="text-xl font-bold tracking-tight">RMagine <span className="text-brand-400">Master</span></h1>
           </div>
-          <div className="text-xs text-brand-400 font-mono bg-gray-800/50 px-3 py-1.5 rounded-full border border-gray-700">
-              VIRAL PIPELINE ACTIVE
+          <div className="flex items-center gap-3">
+            <div className={`text-xs font-mono px-3 py-1.5 rounded-full border ${keyCount > 0 ? 'bg-emerald-950/40 text-emerald-400 border-emerald-800/60' : 'bg-amber-950/40 text-amber-400 border-amber-800/60'}`}>
+              ● {keyCount}/3 Keys Active
+            </div>
+            <div className="text-xs text-brand-400 font-mono bg-gray-800/50 px-3 py-1.5 rounded-full border border-gray-700">
+                VIRAL PIPELINE ACTIVE
+            </div>
           </div>
         </div>
       </header>

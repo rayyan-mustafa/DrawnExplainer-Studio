@@ -1,47 +1,59 @@
-# RMagine Master - Local Setup Guide
+# RMagine Master - Video Production Studio
 
-This guide explains how to run the RMagine Master application on your local machine using your own API keys.
+A modern AI video production pipeline for scripted documentary storytelling, scene rendering, voice synthesis, and video generation.
 
 ## Prerequisites
 
 - [Node.js](https://nodejs.org/) (Version 18 or higher recommended)
-- A Gemini API Key from [Google AI Studio](https://aistudio.google.com/app/apikey)
+- API Keys:
+  - **OpenRouter API Key** (or Gemini Key via OpenRouter) for scriptwriting & scene generation
+  - **OpenAI API Key** for realistic TTS voice narration
+  - **Wavespeed API Key** for Flux image & WAN video generation
 
-## Installation Steps
+## Quick Setup Guide
 
-1. **Download the Code**
-   Download or clone this repository to a folder on your computer.
+1. **Clone or Download Repository**
+   ```bash
+   git clone <repo-url>
+   cd <project-folder>
+   ```
 
 2. **Install Dependencies**
-   Open your terminal (Command Prompt, PowerShell, or Terminal) in the project folder and run:
    ```bash
    npm install
    ```
 
 3. **Configure Environment Variables**
-   - Find the file named `.env.example` in the root folder.
-   - Rename it to `.env`.
-   - Open the `.env` file in a text editor.
-   - Replace `your_actual_api_key_here` with your real Gemini API key:
-     ```env
-     GEMINI_API_KEY=AIzaSy...your_key_here...
+   - Copy or rename `.env.example` to `.env`:
+     ```bash
+     cp .env.example .env
      ```
+   - Open `.env` and fill in your keys:
+     ```env
+     OPENROUTER_API_KEY=your_openrouter_api_key
+     OPENAI_API_KEY=your_openai_api_key
+     WAVESPEED_API_KEY=your_wavespeed_api_key
+     ```
+   *(Note: `.env` is ignored by `.gitignore` so your personal keys will never be pushed to GitHub.)*
 
 4. **Start the Application**
-   Run the following command to start the development server:
    ```bash
    npm run dev
    ```
-   The terminal will provide a link (usually `http://localhost:3000`). Open that link in your browser.
+   Open `http://localhost:3000` in your browser. The header will show how many of your API keys are actively connected.
 
-## Project Structure
+## Deploying to Netlify
 
-- `App.tsx`: Main application logic and UI.
-- `services/geminiService.ts`: Handles all AI interactions (Scripts, Images, Voiceover).
-- `components/`: UI components for the Player and Timeline.
-- `vite.config.ts`: Configuration for the build system and environment variables.
+This project is fully configured for Netlify:
 
-## Troubleshooting
-
-- **API Key Errors**: Ensure your `.env` file is named correctly (no `.txt` extension) and that your key is active in Google AI Studio.
-- **Missing Modules**: If you see "module not found" errors, try running `npm install` again.
+1. **Push your repository to GitHub**.
+2. Go to [Netlify](https://app.netlify.com/) and click **"Add new site" > "Import an existing project"**.
+3. Select your GitHub repository. Netlify will automatically detect the settings from `netlify.toml`:
+   - **Build command**: `npm run build`
+   - **Publish directory**: `dist`
+   - **Functions directory**: `netlify/functions`
+4. Go to **Site Configuration > Environment Variables** and add your secret keys:
+   - `OPENROUTER_API_KEY`
+   - `OPENAI_API_KEY`
+   - `WAVESPEED_API_KEY`
+5. Click **Deploy**. Netlify will build the frontend and serve the `/api/*` backend routes using Netlify Functions.
