@@ -22,6 +22,24 @@ export const SAFETY_BLOCK = "STRICT YOUTUBE AD POLICY COMPLIANCE: No profanity, 
  */
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
+const safeJsonParse = (text: string, fallback: any) => {
+    try {
+        // Strip <think>...</think> blocks, even if unclosed due to truncation
+        let cleaned = text.replace(/<think>[\s\S]*?(?:<\/think>|$)/gi, '').trim();
+        cleaned = cleaned.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
+        
+        if (!cleaned) {
+            console.warn("JSON Parse Warning: Cleaned text is empty after stripping tags. Returning fallback.");
+            return fallback;
+        }
+        
+        return JSON.parse(cleaned);
+    } catch (e: any) {
+        console.error(`JSON Parse Error: ${e.message}\nRaw Text: ${text.substring(0, 500)}`);
+        throw new Error(`JSON_PARSE_ERROR: ${e.message}`);
+    }
+};
+
 // Random jitter between min and max ms to avoid "bot-like" burst patterns
 const getJitter = (min = 500, max = 2000) => Math.floor(Math.random() * (max - min + 1)) + min;
 
@@ -110,8 +128,11 @@ export const generateScenes = async (script: string, totalDuration: number): Pro
   const targetSceneCount = Math.max(1, Math.ceil(totalDuration / 5)); 
 
   return await executeWithRetry(async (client) => {
+    // Estimate tokens: ~1 token per 3 chars, plus 4000 for JSON overhead and reasoning.
+    const estimatedTokens = Math.ceil(script.length / 3) + 4000;
     const response = await client.chat.completions.create({
       model: "google/gemini-2.5-flash", 
+      max_tokens: Math.min(30000, Math.max(4000, estimatedTokens)),
       messages: [
         {
           role: "system",
@@ -151,7 +172,7 @@ export const generateScenes = async (script: string, totalDuration: number): Pro
     });
 
     const text = response.choices[0].message.content || '{"scenes":[]}';
-    const data = JSON.parse(text);
+    const data = safeJsonParse(text, {scenes:[]});
     const rawScenes = Array.isArray(data.scenes) ? data.scenes : [];
     
     // Calculate timing based on word count of each segment for "natural" allocation
@@ -196,6 +217,7 @@ export const generateImagePrompts = async (scenes: Scene[]): Promise<string[]> =
   return await executeWithRetry(async (client) => {
     const response = await client.chat.completions.create({
       model: "google/gemini-2.5-flash", 
+      max_tokens: Math.min(30000, Math.max(4000, scenes.length * 400 + 2000)),
       messages: [
         {
           role: "system",
@@ -220,7 +242,7 @@ export const generateImagePrompts = async (scenes: Scene[]): Promise<string[]> =
       response_format: { type: "json_object" }
     });
     const text = response.choices[0].message.content || '{"prompts":[]}';
-    const data = JSON.parse(text);
+    const data = safeJsonParse(text, {prompts:[]});
     const rawPrompts = Array.isArray(data.prompts) ? data.prompts : [];
     
     // Ensure we return an array of strings, even if the model returned objects
@@ -247,6 +269,7 @@ export const generateVideoPrompts = async (scenes: Scene[]): Promise<string[]> =
   return await executeWithRetry(async (client) => {
     const response = await client.chat.completions.create({
       model: "google/gemini-2.5-flash", 
+      max_tokens: Math.min(30000, Math.max(4000, videoScenes.length * 400 + 2000)),
       messages: [
         {
           role: "system",
@@ -270,7 +293,7 @@ export const generateVideoPrompts = async (scenes: Scene[]): Promise<string[]> =
       response_format: { type: "json_object" }
     });
     const text = response.choices[0].message.content || '{"videoPrompts":[]}';
-    const data = JSON.parse(text);
+    const data = safeJsonParse(text, {videoPrompts:[]});
     const rawVideoPrompts = Array.isArray(data.videoPrompts) ? data.videoPrompts : [];
     
     // Ensure we return an array of strings
@@ -427,8 +450,10 @@ export const generateVideoForScene = async (prompt: string, imageUrl: string, re
 
 export const masterAuditScript = async (script: string, topic: string): Promise<{ auditedScript: string; changesLog: string }> => {
   const result = await executeWithRetry(async (client) => {
+    const estimatedTokens = Math.ceil(script.length / 3) + 4000;
     const response = await client.chat.completions.create({
       model: "google/gemini-3.1-pro-preview",
+      max_tokens: Math.min(30000, Math.max(4000, estimatedTokens)),
       messages: [
         {
           role: "system",
@@ -453,7 +478,7 @@ export const masterAuditScript = async (script: string, topic: string): Promise<
       reasoning: { enabled: true }
     });
     const text = response.choices[0].message.content || '{"patches":[], "summaryOfChanges":""}';
-    return JSON.parse(text);
+    return safeJsonParse(text, {patches:[], summaryOfChanges:""});
   }, 2);
 
   let finalScript = script;
@@ -832,6 +857,7 @@ export const determineScriptFramework = async (topic: string): Promise<number> =
         
         const res = await client.chat.completions.create({
             model: "google/gemini-3.1-pro-preview", 
+            max_tokens: 500,
             messages: [{ role: "user", content: prompt }]
         });
         
@@ -855,21 +881,27 @@ export const generateStoryOutline = async (topic: string, durationKey: number): 
     const outlinePrompt = frameworks[durationKey] || frameworks[5];
 
     return executeWithRetry(async (client) => {
-        const res = await client.chat.completions.create({
-            model: "google/gemini-3.1-pro-preview", 
-            messages: [
-                {
-                    role: "system",
-                    content: `${outlinePrompt}\n\nReturn the response as a JSON object with a "chapters" array containing objects with "title", "wordCount", and "description".`
-                }
-            ],
-            response_format: { type: "json_object" },
-            // @ts-ignore
-            reasoning: { enabled: true }
-        });
-        const text = res.choices[0].message.content || '{"chapters":[]}';
-        const parsed = JSON.parse(text);
-        return parsed.chapters || parsed.outline || parsed.segments || [];
+        try {
+            const res = await client.chat.completions.create({
+                model: "google/gemini-3.1-pro-preview", 
+                max_tokens: 8000,
+                messages: [
+                    {
+                        role: "system",
+                        content: `${outlinePrompt}\n\nReturn the response as a JSON object with a "chapters" array containing objects with "title", "wordCount", and "description".`
+                    }
+                ],
+                response_format: { type: "json_object" },
+                // @ts-ignore
+                reasoning: { enabled: true }
+            });
+            const text = res.choices[0].message.content || '{"chapters":[]}';
+            const parsed = safeJsonParse(text, {chapters:[]});
+            return parsed.chapters || parsed.outline || parsed.segments || [];
+        } catch (error) {
+            console.error(`[generateStoryOutline] Failed for topic: ${topic}`, error);
+            throw error;
+        }
     });
 };
 
@@ -891,6 +923,7 @@ export const auditStoryOutline = async (outline: ChapterOutline[], topic: string
         
         const res = await client.chat.completions.create({
             model: "google/gemini-3.1-pro-preview", 
+            max_tokens: Math.min(30000, Math.max(4000, outline.length * 800)),
             messages: [
                 {
                     role: "system",
@@ -902,7 +935,7 @@ export const auditStoryOutline = async (outline: ChapterOutline[], topic: string
             reasoning: { enabled: true }
         });
         const text = res.choices[0].message.content || '{"chapters":[]}';
-        const parsed = JSON.parse(text);
+        const parsed = safeJsonParse(text, {chapters:[]});
         return parsed.chapters || parsed.outline || parsed.segments || [];
     });
 };
@@ -943,20 +976,22 @@ Summary of Script Architecture (Based on Sources):
 [SAFETY]
 ${SAFETY_BLOCK}`;
 
+        const wordCount = Number(chapter.wordCount) || 150;
+        // Estimate ~1.5 tokens per word, plus 1000 for JSON overhead (reasoning disabled to save tokens)
+        const estimatedTokens = Math.ceil(wordCount * 1.5) + 1000;
         const res = await client.chat.completions.create({
             model: "google/gemini-3.1-pro-preview", 
+            max_tokens: estimatedTokens,
             messages: [
                 {
                     role: "system",
                     content: `${prompt}\n\nReturn the response as a JSON object with "content" and "summary" fields.`
                 }
             ],
-            response_format: { type: "json_object" },
-            // @ts-ignore
-            reasoning: { enabled: true }
+            response_format: { type: "json_object" }
         });
         const text = res.choices[0].message.content || '{"content":"", "summary":""}';
-        return JSON.parse(text);
+        return safeJsonParse(text, {content:"", summary:""});
     }, 5);
 };
 
@@ -964,6 +999,7 @@ export const generateVideoMetadata = async (script: string, topic: string): Prom
     const result = await executeWithRetry(async (client) => {
         const response = await client.chat.completions.create({
             model: "google/gemini-2.0-flash-001",
+            max_tokens: 2000,
             messages: [
                 {
                     role: "system",
@@ -973,7 +1009,7 @@ export const generateVideoMetadata = async (script: string, topic: string): Prom
             response_format: { type: "json_object" }
         });
         const text = response.choices[0].message.content || '{}';
-        return JSON.parse(text);
+        return safeJsonParse(text, {});
     }, 2);
 
     return `
@@ -994,6 +1030,7 @@ export const generateThumbnailPrompt = async (videoTitle: string): Promise<{ tex
         // 1. Deduce child detailed json from video title
         const childResponse = await client.chat.completions.create({
             model: "google/gemini-2.0-flash-001",
+            max_tokens: 3000,
             messages: [
                 {
                     role: "system",
@@ -1010,7 +1047,7 @@ export const generateThumbnailPrompt = async (videoTitle: string): Promise<{ tex
         });
 
         const childText = childResponse.choices[0].message.content || '{"detailed_prompt":""}';
-        const childData = JSON.parse(childText);
+        const childData = safeJsonParse(childText, {detailed_prompt:""});
         const childPrompt = childData.detailed_prompt;
 
         // 2. Construct Master JSON
@@ -1037,6 +1074,7 @@ export const generateThumbnailPrompt = async (videoTitle: string): Promise<{ tex
         // 3. Convert JSON to Text Prompt (excluding negative prompts like timestamps)
         const textPromptResponse = await client.chat.completions.create({
             model: "google/gemini-2.0-flash-001",
+            max_tokens: 2000,
             messages: [
                 {
                     role: "system",
